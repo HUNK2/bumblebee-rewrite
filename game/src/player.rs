@@ -6,7 +6,8 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::assets::{ObjectNodes, bevy_to_game, game_to_bevy};
-use crate::camera::{self, MOUSE_COUNTS_FOR_FULL_STICK, Rig};
+use crate::camera::{self, Rig};
+use tf2_core::input::{Directions, LookSampler, MouseLatch, MOUSE_DIVISOR};
 use crate::control::button;
 use crate::sim::{self, Input, State};
 use crate::sound::SoundOut;
@@ -29,6 +30,11 @@ pub struct Controls {
     pub stick: Vec2,
     /// Right stick, for the camera: x right, y up.
     pub look: Vec2,
+    pub look_samples: Vec<Vec2>,
+    pub look_sampler: LookSampler,
+    pub mouse_latch: MouseLatch,
+    pub mouse_captured: bool,
+    pub mouse_divisor: Option<i32>,
     /// One scripted D-pad Up press for deterministic camera captures.
     pub camera_cycle_at: Option<f32>,
     pub recentre_pressed: bool,
@@ -108,34 +114,23 @@ pub struct RobotModel;
 #[derive(Component)]
 pub struct VehicleModel;
 
-/// Each axis of a stick reads as centred inside this, and the rest is stretched to run
-/// from 0 to 1 again (`FUN_005aa890`, the engine's pad filter; the value is set by
-/// `FUN_005aa700`). It is per axis, not round. [game] Whether the Beenox reader at
-/// `004ec6c0` is fed from this filter or from the raw pad was not followed.
-const STICK_DEAD_ZONE: f32 = 0.25;
-
-fn dead_zone(stick: Vec2) -> Vec2 {
-    let axis = |v: f32| {
-        if v.abs() < STICK_DEAD_ZONE { 0.0 } else { v.signum() * ((v.abs() - STICK_DEAD_ZONE) / (1.0 - STICK_DEAD_ZONE)).min(1.0) }
-    };
-    Vec2::new(axis(stick.x), axis(stick.y))
-}
-
 pub fn read_input(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     buttons: Res<ButtonInput<MouseButton>>,
     mouse: Res<AccumulatedMouseMotion>,
-    cursor: Single<&CursorOptions, With<PrimaryWindow>>,
+    cursor: Single<(&Window, &CursorOptions), With<PrimaryWindow>>,
     pads: Query<&Gamepad>,
     mut controls: ResMut<Controls>,
 ) {
+    let controls = &mut *controls;
     let now = time.elapsed_secs();
-    let axis = |negative: KeyCode, positive: KeyCode| {
-        (keys.pressed(positive) as i32 - keys.pressed(negative) as i32) as f32
-    };
-    let mut stick =
-        controls.force_stick + Vec2::new(axis(KeyCode::KeyA, KeyCode::KeyD), axis(KeyCode::KeyS, KeyCode::KeyW));
+    let focused = (*cursor).0.focused;
+    let pressed = |key| focused && keys.pressed(key);
+    let just_pressed = |key| focused && keys.just_pressed(key);
+    let mut stick = Directions { left: pressed(KeyCode::KeyA) as u8 as f32,
+        right: pressed(KeyCode::KeyD) as u8 as f32, down: pressed(KeyCode::KeyS) as u8 as f32,
+        up: pressed(KeyCode::KeyW) as u8 as f32 };
     if controls.die_at.is_some_and(|at| now >= at) {
         controls.die_at = None;
         controls.damage_pressed = true;
@@ -145,70 +140,75 @@ pub fn read_input(
         controls.jump_at = None;
         controls.jump_pressed = true;
     }
-    let grabbed = cursor.grab_mode == CursorGrabMode::Locked;
+    let grabbed = focused && (*cursor).1.grab_mode == CursorGrabMode::Locked;
+    let was_captured = controls.mouse_captured;
+    if grabbed != was_captured || !focused { controls.look_sampler.clear_mouse(); }
+    controls.mouse_captured = grabbed;
+    let mouse_held = controls.mouse_latch.frame(grabbed, [buttons.pressed(MouseButton::Left),
+        buttons.pressed(MouseButton::Right), buttons.pressed(MouseButton::Middle)]);
     let firing = controls.fire_from.is_some_and(|from| now >= from) && controls.fire_until.is_none_or(|until| now < until);
     let scripted_aim = controls.aim_from.is_some_and(|from| now >= from);
     let scripted_melee = controls.melee_at.first().is_some_and(|&at| now >= at);
     if scripted_melee {
         controls.melee_at.remove(0);
     }
-    let mut look = if scripted_aim || firing { Vec2::new(0.0, controls.force_look_y) } else { Vec2::ZERO };
+    let capture_look = if scripted_aim || firing { Vec2::new(0.0, controls.force_look_y) } else { Vec2::ZERO };
+    let mut look = Directions { left: pressed(KeyCode::ArrowLeft) as u8 as f32,
+        right: pressed(KeyCode::ArrowRight) as u8 as f32, down: pressed(KeyCode::ArrowDown) as u8 as f32,
+        up: pressed(KeyCode::ArrowUp) as u8 as f32 };
     // The pad follows the game's own bindings: R2 vehicle mode, throttle and fire, L2 weapon
     // mode and the slide, L1 brake, R1 next weapon, the bottom face button jump and turbo.
     let scripted = controls.vehicle_window.is_some_and(|(from, until)| (from..until).contains(&now));
-    let mut vehicle = if keys.pressed(KeyCode::ShiftLeft) || scripted { 1.0 } else { 0.0 };
-    let mut brake = if keys.pressed(KeyCode::ControlLeft) { 1.0 } else { 0.0 };
+    // [data] Installed Beenox defaults: Shift/LMB share R2; Ctrl is action,
+    // R is L1, T is R1, F is the top face button, MMB is the left face button.
+    let mut vehicle = if pressed(KeyCode::ShiftLeft) || mouse_held[0] || scripted { 1.0 } else { 0.0 };
+    let mut brake = if pressed(KeyCode::KeyR) { 1.0 } else { 0.0 };
     let mut aim =
-        keys.pressed(KeyCode::AltLeft) || (grabbed && buttons.pressed(MouseButton::Right)) || firing || scripted_aim;
-    let mut switch = keys.pressed(KeyCode::KeyQ) || controls.switch_at.is_some_and(|at| (at..at + 0.1).contains(&now));
-    let mut jump = keys.just_pressed(KeyCode::Space);
-    let mut recentre=keys.just_pressed(KeyCode::Home)||controls.recentre_at.is_some_and(|at|now>=at);
+        pressed(KeyCode::AltLeft) || mouse_held[1] || firing || scripted_aim;
+    let mut switch = pressed(KeyCode::KeyT) || controls.switch_at.is_some_and(|at| (at..at + 0.1).contains(&now));
+    let mut recentre=just_pressed(KeyCode::KeyE)||just_pressed(KeyCode::Home)||controls.recentre_at.is_some_and(|at|now>=at);
     if recentre {controls.recentre_at=None;}
-    let mut jump_held = keys.pressed(KeyCode::Space);
-    let mut melee = keys.just_pressed(KeyCode::KeyF) || scripted_melee;
-    let mut melee_held = keys.pressed(KeyCode::KeyF) || controls.melee_hold_from.is_some_and(|from| now >= from && controls.melee_hold_until.is_none_or(|until| now < until));
+    let mut jump_held = pressed(KeyCode::Space);
+    let mut melee_held = mouse_held[2] || controls.melee_hold_from.is_some_and(|from| now >= from && controls.melee_hold_until.is_none_or(|until| now < until));
     let scripted_climb = controls.climb_from.is_some_and(|from| now >= from);
-    let mut climb = keys.just_pressed(KeyCode::KeyE) || (scripted_climb && !controls.climb_held);
-    let mut climb_held = keys.pressed(KeyCode::KeyE) || scripted_climb;
+    let mut climb_held = pressed(KeyCode::ControlLeft) || scripted_climb;
     let scripted_special = controls.special_at.is_some_and(|at| now >= at);
     if scripted_special {
         controls.special_at = None;
     }
-    let mut special = keys.just_pressed(KeyCode::KeyX) || scripted_special;
-    let mut special_held = keys.pressed(KeyCode::KeyX) || scripted_special;
-    for pad in &pads {
+    let mut special_held = pressed(KeyCode::KeyF) || pressed(KeyCode::KeyX) || scripted_special;
+    for pad in pads.iter().filter(|_| focused) {
         // The top face button is the special ability in the game's bindings
         // (`AttackSpecial` on `DPAD_R_UP`). [data]
-        special |= pad.just_pressed(GamepadButton::North);
         special_held |= pad.pressed(GamepadButton::North);
-        melee |= pad.just_pressed(GamepadButton::West);
         melee_held |= pad.pressed(GamepadButton::West);
         // The right face button is action and climb in the game's bindings.
-        climb |= pad.just_pressed(GamepadButton::East);
         climb_held |= pad.pressed(GamepadButton::East);
-        stick += dead_zone(pad.left_stick());
-        look += dead_zone(pad.right_stick());
+        stick.merge(Directions::signed(pad.left_stick()));
+        look.merge(Directions::signed(pad.right_stick()));
         vehicle = f32::max(vehicle, pad.get(GamepadButton::RightTrigger2).unwrap_or(0.0));
         brake = f32::max(brake, pad.get(GamepadButton::LeftTrigger).unwrap_or(0.0));
         aim |= pad.get(GamepadButton::LeftTrigger2).unwrap_or(0.0) > 0.3;
         switch |= pad.pressed(GamepadButton::RightTrigger);
-        jump |= pad.just_pressed(GamepadButton::South);
         jump_held |= pad.pressed(GamepadButton::South);
         // [data] CameraReset=R3 in the installed Controller table.
         recentre |= pad.just_pressed(GamepadButton::RightThumb);
     }
-    controls.stick = stick.clamp_length_max(1.0);
-    // The mouse is a camera stick too: counts this frame over the divisor, each way
-    // stopping at 1. [game]
-    if grabbed {
-        let pushed = (mouse.delta / MOUSE_COUNTS_FOR_FULL_STICK).clamp(Vec2::NEG_ONE, Vec2::ONE);
-        look += Vec2::new(pushed.x, -pushed.y);
-    }
-    controls.look = look.clamp(Vec2::NEG_ONE, Vec2::ONE);
+    let jump = jump_held && !controls.jump_held;
+    let melee = scripted_melee || (melee_held && !controls.melee_held);
+    let climb = climb_held && !controls.climb_held;
+    let special = scripted_special || (special_held && !controls.special_held);
+    controls.stick = (stick.filtered() + controls.force_stick).clamp_length_max(1.0);
+    let delta = if grabbed && was_captured { mouse.delta } else { Vec2::ZERO };
+    let dt = time.delta_secs().clamp(0.0, LONGEST_STEP);
+    let sampled = controls.look_sampler.frame(look, delta, controls.mouse_divisor.unwrap_or(MOUSE_DIVISOR), dt, &mut controls.look_samples);
+    controls.look = (sampled + capture_look).clamp(Vec2::NEG_ONE, Vec2::ONE);
+    // Preserve the existing deterministic capture-only stick injection.
+    for sample in &mut controls.look_samples { *sample = (*sample + capture_look).clamp(Vec2::NEG_ONE, Vec2::ONE); }
     controls.vehicle = vehicle;
     controls.brake = brake;
     controls.aim = aim;
-    controls.fire = (grabbed && buttons.pressed(MouseButton::Left)) || firing;
+    controls.fire = mouse_held[0] || firing;
     controls.switch = switch;
     controls.jump_held = jump_held;
     controls.jump_pressed |= jump;
@@ -219,8 +219,9 @@ pub fn read_input(
     controls.climb_pressed |= climb;
     controls.special_held = special_held;
     controls.special_pressed |= special;
-    controls.damage_pressed |= keys.just_pressed(KeyCode::KeyH);
-    controls.reset_pressed |= keys.just_pressed(KeyCode::KeyR);
+    controls.damage_pressed |= just_pressed(KeyCode::KeyH);
+    // [stand-in] Debug reset moves to F5 because native R is brake.
+    controls.reset_pressed |= just_pressed(KeyCode::F5);
 }
 
 /// One frame of Bumblebee: the movement, then the camera that follows it, his weapons and
@@ -243,6 +244,7 @@ pub fn tick(
     placed: Query<&GlobalTransform>,
     enemies: Query<&crate::targets::EnemyTarget>,
 ) {
+    let controls = &mut *controls;
     let player = &mut **player;
     let t = &tuning.0;
     let sound = sound.as_deref();
@@ -258,6 +260,9 @@ pub fn tick(
         let options=rig.camera.options;
         let (orbit,zoom)=(rig.orbit,rig.zoom);
         *rig = Rig::new(&player.state, t, None, None);
+        controls.look_sampler = LookSampler::default();
+        controls.look = controls.look_sampler.frame(Directions::default(), Vec2::ZERO,
+            controls.mouse_divisor.unwrap_or(MOUSE_DIVISOR), dt, &mut controls.look_samples);
         rig.camera.options=options;
         rig.orbit=orbit;rig.zoom=zoom;
         if let Some(sound) = sound {
@@ -373,7 +378,7 @@ pub fn tick(
     let target = camera::target(&player.state, t, aim);
     if controls.recentre_pressed {rig.camera.recentre(&target);controls.recentre_pressed=false;}
     let world=tf2_core::camera::Scene {solids:&arena.0,fadeable:&occluders.0};
-    let view = rig.camera.step(&target, controls.look, t, &world, dt);
+    let view = rig.camera.step_sampled(&target, controls.look, t, &world, dt, &controls.look_samples);
     rig.view = view;
     rig.shake(&player.state.shakes, t, dt);
 
@@ -479,4 +484,106 @@ pub fn present(mut player: Single<(&Player, &mut Transform)>) {
     // Pitch lifts the nose and roll the left side, about the car's own axes.
     transform.rotation =
         Quat::from_rotation_y(yaw) * Quat::from_rotation_x(pitch) * Quat::from_rotation_z(-roll);
+}
+
+#[cfg(test)]
+mod input_tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn app() -> App {
+        let mut app = App::new();
+        app.init_resource::<Time>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<ButtonInput<MouseButton>>()
+            .init_resource::<AccumulatedMouseMotion>()
+            .init_resource::<Controls>()
+            .add_systems(Update, (camera::grab_cursor, read_input).chain());
+        app.world_mut().spawn((Window { focused: true, ..Default::default() },
+            CursorOptions::default(), PrimaryWindow));
+        app
+    }
+
+    fn frame(app: &mut App, dt: f32) {
+        app.world_mut().resource_mut::<Time>().advance_by(Duration::from_secs_f32(dt));
+        app.update();
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().clear();
+        app.world_mut().resource_mut::<ButtonInput<MouseButton>>().clear();
+    }
+
+    #[test]
+    fn native_keyboard_bindings_reach_gameplay_controls() {
+        let mut app = app();
+        for key in [KeyCode::KeyW, KeyCode::ArrowRight, KeyCode::Space, KeyCode::ControlLeft,
+            KeyCode::KeyR, KeyCode::KeyT, KeyCode::KeyF, KeyCode::KeyE] {
+            app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);
+        }
+        frame(&mut app, 0.032);
+        let controls = app.world().resource::<Controls>();
+        assert!((controls.stick - Vec2::Y).length() < 0.0001);
+        assert_eq!(controls.look, Vec2::X);
+        assert!(controls.jump_pressed && controls.climb_pressed && controls.special_pressed);
+        assert!(controls.recentre_pressed && controls.switch);
+        assert_eq!(controls.brake, 1.0);
+        assert!(!controls.melee_held && !controls.reset_pressed);
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::F5);
+        frame(&mut app, 0.032);
+        assert!(app.world().resource::<Controls>().reset_pressed);
+    }
+
+    #[test]
+    fn capture_click_is_suppressed_and_native_mouse_buttons_work_after_release() {
+        let mut app = app();
+        app.world_mut().resource_mut::<ButtonInput<MouseButton>>().press(MouseButton::Left);
+        frame(&mut app, 0.032);
+        let controls = app.world().resource::<Controls>();
+        assert_eq!(controls.vehicle, 0.0);
+        assert!(!controls.fire);
+        frame(&mut app, 0.032);
+        assert_eq!(app.world().resource::<Controls>().vehicle, 0.0);
+        app.world_mut().resource_mut::<ButtonInput<MouseButton>>().release(MouseButton::Left);
+        frame(&mut app, 0.032);
+        for button in [MouseButton::Left, MouseButton::Right, MouseButton::Middle] {
+            app.world_mut().resource_mut::<ButtonInput<MouseButton>>().press(button);
+        }
+        frame(&mut app, 0.032);
+        let controls = app.world().resource::<Controls>();
+        assert_eq!(controls.vehicle, 1.0);
+        assert!(controls.aim && controls.fire && controls.melee_pressed);
+        assert!(!controls.special_held);
+        let entity = app.world_mut().query_filtered::<Entity, With<PrimaryWindow>>()
+            .single(app.world()).unwrap();
+        app.world_mut().get_mut::<Window>(entity).unwrap().focused = false;
+        frame(&mut app, 0.032);
+        let controls = app.world().resource::<Controls>();
+        assert_eq!(controls.vehicle, 0.0);
+        assert!(!controls.aim && !controls.fire && !controls.melee_held);
+        assert_eq!(app.world().get::<CursorOptions>(entity).unwrap().grab_mode, CursorGrabMode::None);
+    }
+
+    #[test]
+    fn a_mouse_flick_between_camera_updates_is_retained() {
+        let mut app = app();
+        let entity = app.world_mut().query_filtered::<Entity, With<PrimaryWindow>>()
+            .single(app.world()).unwrap();
+        app.world_mut().get_mut::<CursorOptions>(entity).unwrap().grab_mode = CursorGrabMode::Locked;
+        frame(&mut app, 0.032);
+        app.world_mut().resource_mut::<AccumulatedMouseMotion>().delta = Vec2::new(8.0, 0.0);
+        frame(&mut app, 0.008);
+        assert!(app.world().resource::<Controls>().look_samples.is_empty());
+        app.world_mut().resource_mut::<AccumulatedMouseMotion>().delta = Vec2::ZERO;
+        frame(&mut app, 0.024);
+        assert!(app.world().resource::<Controls>().look_samples[0].x > 0.7);
+    }
+
+    #[test]
+    fn keyboard_camera_input_stays_held_without_mouse_capture() {
+        let mut app = app();
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::ArrowRight);
+        frame(&mut app, 0.032);
+        for _ in 0..3 {
+            frame(&mut app, 0.008);
+            assert_eq!(app.world().resource::<Controls>().look, Vec2::X);
+        }
+    }
 }

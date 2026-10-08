@@ -773,6 +773,21 @@ impl Camera {
         world: &dyn Sight,
         dt: f32,
     ) -> View {
+        self.step_sampled(target, stick, tuning, world, dt, &[])
+    }
+
+    /// Each queued stick belongs to one 32ms update, preserving mouse samples
+    /// from render frames between updates. Existing callers can still use step.
+    pub fn step_sampled(
+        &mut self,
+        target: &Target,
+        stick: Vec2,
+        tuning: &Tuning,
+        world: &dyn Sight,
+        dt: f32,
+        samples: &[Vec2],
+    ) -> View {
+        let mut samples = samples.iter();
         let weapon = target.aim.is_some() && !target.vehicle;
         if !self.started || target.vehicle != self.vehicle || weapon != self.weapon {
             self.start(target, tuning);
@@ -801,7 +816,7 @@ impl Camera {
                 self.recentre(&then);
             }
             self.mode = mode;
-            let stick = self.options.stick(stick);
+            let stick = self.options.stick(samples.next().copied().unwrap_or(stick));
             if self.frozen && !self.vehicle && !self.weapon {
                 let point =
                     then.position + Vec3::Z * (then.height + tuning.robot_camera.height_offset);
@@ -1854,6 +1869,31 @@ mod tests {
             "{}",
             camera.distance
         );
+    }
+
+    #[test]
+    fn sampled_mouse_turn_matches_across_render_rates() {
+        let t = tuning();
+        let target = robot(Vec3::ZERO, Vec3::ZERO);
+        let run = |fps: usize| {
+            let mut camera = Camera::behind(&target, &t);
+            let mut input = crate::input::LookSampler::default();
+            let mut ready = Vec::new();
+            let mut view = camera.step(&target, Vec2::ZERO, &t, &Open, 0.0);
+            for _ in 0..fps {
+                let dt = 1.0 / fps as f32;
+                let look = input.frame(crate::input::Directions::default(),
+                    Vec2::new(200.0 * dt, 0.0), 10, dt, &mut ready);
+                view = camera.step_sampled(&target, look, &t, &Open, dt, &ready);
+            }
+            view
+        };
+        let reference = run(240);
+        for fps in [30, 60, 144] {
+            let view = run(fps);
+            assert!((view.eye - reference.eye).length() < 0.005, "fps={fps}");
+            assert!((view.forward - reference.forward).length() < 0.001, "fps={fps}");
+        }
     }
 
     #[test]

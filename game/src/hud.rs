@@ -277,22 +277,22 @@ pub struct Crosshair;
 const HELP: &str = "\
 Keyboard and mouse                 Pad (the game's own bindings)
   W A S D     move / steer           left stick
-  mouse       camera (click first)   right stick
+  mouse/arrows camera (click first)  right stick
   Space       jump / turbo           bottom face button
-  L-Shift     hold: car form         R2 (hold, analog throttle)
-  L-Ctrl / S  brake, reverse         L1
+  Shift/LMB   hold: car form         R2 (hold, analog throttle)
+  R / S       brake, reverse         L1
   L-Alt / RMB weapon mode; slide     L2
   LMB         fire (in weapon mode)  R2 (in weapon mode)
-  Q           next weapon            R1
-  C           camera distance        D-pad Up
-  Home        camera recentre        R3 (press right stick)
-  F           melee; held: charge    left face button
+  T           next weapon            R1
+  I/K, wheel  camera distance        D-pad Up/Down (C also works)
+  E / Home    camera recentre        R3 (press right stick)
+  MMB         melee; held: charge    left face button
               in weapon mode with the stick: dodge
               in the air: tap attack, hold ground punch; in the car, held: its gun
-  X           special (stun wave)    top face button
-  E           climb, facing a wall   right face button
+  F / X       special (stun wave)    top face button
+  L-Ctrl      climb, facing a wall   right face button
               on it: stick to climb, jump (stick back: off), press again: let go
-  H  take damage    R  reset    F1  hide this    Esc  free the mouse
+  H  take damage    F5 reset    F1  hide this    Esc  free the mouse
 
 Test terrain behind the start: blue deck / orange launch ramp (left)
   green hill / purple bank (right); tower for climbing farther left

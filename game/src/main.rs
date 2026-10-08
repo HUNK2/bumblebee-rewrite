@@ -210,6 +210,7 @@ fn main() {
         switch_at: number("--switch-at"),
         camera_cycle_at: number("--camera-cycle-at"),
         recentre_at: number("--recentre-at"),
+        mouse_divisor: number("--mouse-sensitivity").map(tf2_core::input::mouse_divisor),
         special_at: number("--special-at"),
         ..Default::default()
     };
@@ -262,7 +263,7 @@ fn main() {
     .add_systems(Update, rumble::play.after(player::tick))
     .add_systems(
         Update,
-        (player::read_input, camera::grab_cursor, camera::cycle_distance, camera::collect_occluders, player::tick, player::present, animation::animate, camera::apply).chain(),
+        (camera::grab_cursor, player::read_input, camera::cycle_distance, camera::collect_occluders, player::tick, player::present, animation::animate, camera::apply).chain(),
     );
     if let Some(sound) = sound {
         app.insert_resource(sound);

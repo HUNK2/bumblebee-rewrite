@@ -4,12 +4,13 @@
 //!
 //! In weapon mode the stick turns his aim (`tf2_core::aim`) and the weapon camera follows
 //! that. The mouse is the original's: a second camera stick (see
-//! `MOUSE_COUNTS_FOR_FULL_STICK`).
+//! `tf2_core::input`).
 //!
 //! The camera shakes (`tf2_core::shake`) are put on the view as it is drawn; the view the
 //! stick and the weapons go by is the one without them.
 
 use bevy::prelude::*;
+use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use tf2_core::aim::Aim;
 use tf2_core::camera::{Camera, Mode, Target, View};
@@ -20,13 +21,6 @@ use crate::assets::game_to_bevy;
 use crate::player::{Controls, Player, TuningRes};
 use crate::sim::{ShakeStart, State};
 use crate::tuning::Tuning;
-
-/// The mouse is a stick in the original: each direction of it is a control that reads
-/// counts moved this frame over this divisor, from 0 to 1 (`FUN_004f0e30`; the divisor
-/// `DAT_00bf361c` is 10 in the executable; options rewrite it as
-/// trunc((1.05 - SETTING_AIM_MOUSE) * 20), checked at008e8bb0). So it turns the cameras and the aim at their stick rates, and
-/// more than this many counts in a frame is the stick held over. [game]
-pub const MOUSE_COUNTS_FOR_FULL_STICK: f32 = 10.0;
 
 /// Scene importers attach this only to collision objects carrying the original fade
 /// flag. Bounds are in game/world space; a moving object updates them with its pose.
@@ -270,21 +264,24 @@ impl Rig {
 pub fn grab_cursor(
     buttons: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
-    mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
+    mut cursor: Single<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
 ) {
+    let (window, cursor) = &mut *cursor;
+    if !window.focused || keys.just_pressed(KeyCode::Escape) {
+        cursor.grab_mode = CursorGrabMode::None;
+        cursor.visible = true;
+        return;
+    }
     if buttons.just_pressed(MouseButton::Left) {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
-    }
-    if keys.just_pressed(KeyCode::Escape) {
-        cursor.grab_mode = CursorGrabMode::None;
-        cursor.visible = true;
     }
 }
 
 /// D-pad Up sends a signed-1 level step; camera options are shared across forms in
 /// the user's capture (57.867s L1->L0;96.147s L0->L2). [trace/game]
-/// C is the keyboard equivalent. Camera Options also support separate per-form levels.
+/// [data] Native PC I/wheel-up and K/wheel-down map to the d-pad directions.
+/// C remains an added shortcut. Options also support separate per-form levels.
 pub fn cycle_distance(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&Gamepad>,
@@ -293,6 +290,8 @@ pub fn cycle_distance(
     mut tuning: ResMut<TuningRes>,
     mut rig: ResMut<Rig>,
     player: Single<&Player>,
+    scroll: Res<AccumulatedMouseScroll>,
+    cursor: Single<(&Window, &CursorOptions), With<PrimaryWindow>>,
 ) {
     let scripted = controls
         .camera_cycle_at
@@ -300,14 +299,14 @@ pub fn cycle_distance(
     if scripted {
         controls.camera_cycle_at = None;
     }
-    if !scripted
-        && !keys.just_pressed(KeyCode::KeyC)
-        && !pads
-            .iter()
-            .any(|pad| pad.just_pressed(GamepadButton::DPadUp))
-    {
-        return;
-    }
+    let focused = (*cursor).0.focused;
+    let wheel = if focused && (*cursor).1.grab_mode == CursorGrabMode::Locked { scroll.delta.y } else { 0.0 };
+    let up = focused && (keys.just_pressed(KeyCode::KeyC) || keys.just_pressed(KeyCode::KeyI)
+        || pads.iter().any(|pad| pad.just_pressed(GamepadButton::DPadUp)) || wheel > 0.0);
+    let down = focused && (keys.just_pressed(KeyCode::KeyK)
+        || pads.iter().any(|pad| pad.just_pressed(GamepadButton::DPadDown)) || wheel < 0.0);
+    let direction = if scripted { -1 } else { down as i32 - up as i32 };
+    if direction == 0 { return; }
     let t = &mut tuning.0;
     let vehicle = player.state.is_vehicle();
     let weapon = !vehicle && controls.aim;
@@ -319,7 +318,7 @@ pub fn cycle_distance(
         0
     };
     let options = rig.camera.options;
-    options.cycle(&mut rig.levels, form, -1);
+    options.cycle(&mut rig.levels, form, direction);
     if let Some(s) = t.robot_camera_levels.get(rig.levels[0]) {
         t.robot_camera = s.clone();
     }

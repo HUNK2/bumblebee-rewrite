@@ -11,8 +11,10 @@
 - Preserve [game], [data], [trace], [assumed] and [stand-in] source tags. Record new
   gameplay assumptions in notes/status.md with reasons and evidence needed.
 - Run relevant checks; do not claim untested parity with the original.
-- Keep identifying details, account handles, private notes, credentials,
+- Keep private identifying details, private notes, credentials,
   user-profile paths, debug symbols and logs out of public files/history.
+  The owner's intentional HUNK2 credit and Git author identity are public.
 - Package from an explicit file list. Never ZIP the entire working folder.
-- Use generic Git identity and UTC timestamps for local release history.
+- Use the owner's existing HUNK2 Git identity and UTC timestamps for commits and
+  publishing. Never substitute "Release Maintainer" for the owner's attribution.
 - Use edit tools for source changes; keep decoded assets/build output local.

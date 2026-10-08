@@ -21,6 +21,7 @@ pub mod fxstate;
 pub mod footik;
 pub mod gun;
 pub mod hud;
+pub mod input;
 pub mod lockon;
 pub mod melee;
 pub mod particles;

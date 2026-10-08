@@ -22,6 +22,11 @@ executable and rewriting its mechanics in Rust and Bevy.
 Mouse and keyboard input are supported, but this build was developed and tested
 with an XInput controller.
 
+The source now uses the original PC bindings for the implemented gameplay actions
+and retains mouse movement between camera updates. See the updated control table
+in the [player quickstart](docs/player-quickstart.md). The existing Windows ZIP
+predates this source update; rebuild from source until a new ZIP is published.
+
 ## Windows download
 
 Get the Windows x64 ZIP from this repository's Releases page. Extract it,

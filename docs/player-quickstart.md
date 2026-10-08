@@ -22,29 +22,36 @@ This download targets Windows 10/11 x64 and a GPU capable of running Bevy's
 renderer. It has been checked on one development PC; a minimum GPU and broad
 install/version compatibility have not yet been established.
 
-Click the game window to capture the mouse. Esc releases it. F1 toggles help.
+Click the game window to capture the mouse, then release that click before
+playing. Esc or switching away releases it. F1 toggles help.
 
 | Keyboard/mouse | Controller | Action |
 |---|---|---|
 | W A S D | Left stick | Move / steer |
-| Mouse | Right stick | Camera |
+| Mouse or arrow keys | Right stick | Camera |
 | Space | Bottom face button | Jump / vehicle turbo |
-| Left Shift held | R2 held | Vehicle form / throttle |
-| Left Ctrl, or S in vehicle | L1 | Brake / reverse |
+| Left Shift or left mouse held | R2 held | Vehicle form / throttle outside weapon mode |
+| R, or S in vehicle | L1 | Brake / reverse |
 | Left Alt or right mouse held | L2 held | Weapon mode / vehicle drift |
 | Left mouse | R2 in weapon mode | Fire |
-| Q | R1 | Next weapon |
-| F | Left face button | Melee / directional dodge / vehicle gun |
-| X | Top face button | Special ability |
-| E | Right face button | Climb / release wall |
-| C | D-pad Up | Cycle camera distance |
-| Home | R3 | Recenter camera |
-| R | | Reset character and encounter |
+| T | R1 | Next weapon |
+| Middle mouse | Left face button | Melee / directional dodge / vehicle gun |
+| F (X also works) | Top face button | Special ability |
+| Left Ctrl | Right face button | Climb / release wall |
+| I / K or mouse wheel (C also works) | D-pad Up / Down | Cycle camera distance |
+| E (Home also works) | R3 | Recenter camera |
+| F5 | | Reset character and encounter |
 
 Tap melee during the combo window to chain attacks; hold for the charged attack.
 Move while pressing melee in weapon mode to dodge. In the air, tap for the air
 attack or hold for the ground punch. On a wall, jump climbs upward; jump while
 pushing away leaps off. Press climb to let go.
+
+Mouse movement is accumulated for the camera's 32 ms updates, then converted
+through the original directional clamp and axial dead zone. Short movements
+between updates are retained. The default sensitivity divisor is 10; source
+builds can set `--mouse-sensitivity 0..1`. This input update is a source commit;
+the existing Windows download predates it until a new binary is released.
 
 ## Change settings or diagnose an install
 
