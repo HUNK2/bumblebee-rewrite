@@ -46,6 +46,7 @@ struct Playing {
     mixer: Mixer,
     /// Sounds a clip started that end with it.
     with_clip: Vec<Handle>,
+    weapon_clips: [Vec<Handle>; 2],
     engine: Option<Handle>,
     sounds: Sounds,
     melee_impact: ImpactPreset,
@@ -145,7 +146,8 @@ pub fn start(game_dir: &Path, data: &CharacterData, animations: &AnimLibrary, tu
     wanted.extend(data.weapon_effects.iter().flat_map(|w| w.flight_sounds.iter().chain(&w.blast_sounds)).copied());
     wanted.extend(data.weapon_effects.iter().flat_map(|w| &w.impact.infos).map(|i| i.sound));
     let sets = animations.robot.sets.values().flatten();
-    for clip in sets.chain(&animations.vehicle).filter_map(|reference| reference.clip.as_ref()) {
+    for clip in sets.chain(&animations.vehicle).chain(data.weapon_animations.iter().flatten())
+        .filter_map(|reference| reference.clip.as_ref()) {
         wanted.extend(clip.sound_events.iter().filter_map(|event| match event.cue {
             SoundCue::Play { id, .. } => Some(id),
             _ => None,
@@ -237,6 +239,7 @@ fn output(library: Arc<Library>, playing: Arc<Mutex<Playing>>, volume: f32) -> R
         }
         playing.engine = None;
         playing.with_clip.clear();
+        playing.weapon_clips.iter_mut().for_each(Vec::clear);
         playing.sources.clear();
         playing.skid = None;
         playing.road = None;
@@ -270,7 +273,7 @@ fn output(library: Arc<Library>, playing: Arc<Mutex<Playing>>, volume: f32) -> R
 impl Playing {
     fn new(data: &CharacterData, tuning: &Tuning, chatter: Option<chatter::Speaker>) -> Self {
         Self {
-            mixer: Mixer::new(48000), with_clip: Vec::new(), engine: None, sounds: data.sounds,
+            mixer: Mixer::new(48000), with_clip: Vec::new(), weapon_clips: Default::default(), engine: None, sounds: data.sounds,
             melee_impact: data.melee_impact.clone(), tyre_skid: data.tyre_skid.clone(), tyre_road: data.tyre_road.clone(),
             skid: None, road: None, was_vehicle: false, speed: 0.0, turbo_left: 0.0, turbo_cooldown: 0.0,
             unknown: Vec::new(), sources: Vec::new(), position: Vec3::ZERO, regenerating: false,
@@ -635,6 +638,27 @@ impl SoundOut {
         }
     }
 
+    /// Weapon arm/object cues use their own autoStop lists, independent of locomotion.
+    pub fn weapon_clip_command(&self, command: tf2_core::gun::SoundCommand) {
+        use tf2_core::gun::SoundCommand;
+        let mut playing = self.playing();
+        match command {
+            SoundCommand::Changed { layer } => {
+                for handle in std::mem::take(&mut playing.weapon_clips[layer]) {
+                    playing.mixer.stop(handle);
+                }
+            }
+            SoundCommand::Cue { layer, cue: SoundCue::Play { id, auto_stop } } => {
+                if let (Some(handle), true) = (playing.play(&self.library, id), auto_stop) {
+                    playing.weapon_clips[layer].push(handle);
+                }
+            }
+            SoundCommand::Cue { cue: SoundCue::Stop { id }, .. } => playing.mixer.stop_event(id),
+            SoundCommand::Cue { cue: SoundCue::FootStep { side }, .. } => playing.pending_steps.push(side),
+            SoundCommand::Cue { cue: SoundCue::ClimbStep { limb }, .. } => playing.pending_climb_steps.push(limb),
+        }
+    }
+
     /// The robot's clip changed: sounds the old one asked to end with it stop.
     pub fn clip_changed(&self) {
         let mut playing = self.playing();
@@ -789,6 +813,7 @@ impl SoundOut {
         let mut playing = self.playing();
         playing.mixer.stop_all();
         playing.with_clip.clear();
+        playing.weapon_clips.iter_mut().for_each(Vec::clear);
         playing.engine = None;
         playing.skid = None;
         playing.road = None;
@@ -821,6 +846,61 @@ impl SoundOut {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn installed_weapon_equip_stow_and_both_switch_directions_render_audio() {
+        use tf2_core::gun::{Clips, Gun, SoundCommand};
+        let (sound, _, data) = offline();
+        let clips = Clips {
+            arm: &data.animations.sets["WeaponPartialSet"],
+            entries: &data.animations.incoming["WeaponPartialSet"],
+            object: &data.weapon_animations[0],
+        };
+        let weapons = &data.weapons[..2]; // CharacterData stores primary/secondary before the car's guns.
+        let mut gun = Gun::default();
+        let run = |gun: &mut Gun, weapon: &tf2_core::weapons::WeaponDef, expected: &str| {
+            sound.silence();
+            let mut ids = Vec::new();
+            let mut peak = 0.0_f32;
+            for _ in 0..100 {
+                gun.step(clips, weapon.name, sim::GAME_UPDATE);
+                for command in gun.sound_commands.drain(..) {
+                    if let SoundCommand::Cue { cue: SoundCue::Play { id, .. }, .. } = command { ids.push(id); }
+                    sound.weapon_clip_command(command);
+                }
+                let mut samples = [0.0; 3072];
+                sound.playing().mixer.render(&sound.library, &mut samples);
+                peak = samples.iter().map(|s| s.abs()).fold(peak, f32::max);
+            }
+            assert!(ids.contains(&tf2_core::sound::event_id(expected)), "{expected}: {ids:x?}");
+            assert!(peak > 0.001, "{expected} must produce audible samples");
+        };
+        gun.take_aim(clips, &weapons[0], false);
+        run(&mut gun, &weapons[0], "ANIM_BUMB_WEPN_R2W_A");
+        gun.switched(clips, weapons[1].name);
+        run(&mut gun, &weapons[1], "ANIM_BUMB_WEPN_A2B");
+        gun.switched(clips, weapons[0].name);
+        run(&mut gun, &weapons[0], "ANIM_BUMB_WEPN_B2A");
+        gun.put_away(clips, &weapons[0]);
+        run(&mut gun, &weapons[0], "ANIM_BUMB_WEPN_W2R_A");
+        gun.take_aim(clips, &weapons[1], false);
+        run(&mut gun, &weapons[1], "ANIM_BUMB_WEPN_R2W_B");
+    }
+
+    #[test]
+    fn weapon_auto_stop_is_scoped_to_its_clip_player() {
+        use tf2_core::gun::SoundCommand;
+        let (sound, _, _) = offline();
+        let cue = SoundCue::Play { id: tf2_core::sound::event_id("ANIM_BUMB_WEPN_R2W_A"), auto_stop: true };
+        sound.weapon_clip_command(SoundCommand::Cue { layer: 1, cue });
+        let handle = sound.playing().weapon_clips[1][0];
+        sound.clip_changed();
+        sound.weapon_clip_command(SoundCommand::Changed { layer: 0 });
+        assert!(sound.playing().mixer.is_playing(handle), "base and arm changes cannot cancel the weapon object sound");
+        sound.weapon_clip_command(SoundCommand::Changed { layer: 1 });
+        assert!(!sound.playing().mixer.is_playing(handle));
+        assert!(sound.playing().weapon_clips[1].is_empty());
+    }
 
     fn offline() -> (SoundOut, Tuning, CharacterData) {
         let game = Path::new(r"C:\Games2");

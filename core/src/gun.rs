@@ -14,7 +14,7 @@
 //! that is (the third branch of `FUN_007b4680`), and the object's own cross-fade.
 
 use crate::animrules::var;
-use crate::formats::anim::{AnimRef, Clip, IncomingRule, WeaponEventKind};
+use crate::formats::anim::{AnimRef, Clip, IncomingRule, SoundCue, WeaponEventKind};
 use crate::formats::hash::crc32;
 use crate::weapons::WeaponDef;
 
@@ -117,6 +117,53 @@ pub struct Gun {
     /// When the object's clip ends: the clip to go on to, and whether to hide it.
     then: u32,
     hide_when_done: bool,
+    /// Authored clip audio, collected during simulation so render frames cannot skip cues.
+    pub sound_commands: Vec<SoundCommand>,
+    arm_sound: ClipSound,
+    object_sound: ClipSound,
+}
+
+/// Each clip player owns its autoStop sounds independently. [game: AnimPlaySoundEvent]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SoundCommand {
+    Changed { layer: usize },
+    Cue { layer: usize, cue: SoundCue },
+}
+
+#[derive(Clone, Debug, Default)]
+struct ClipSound {
+    start: bool,
+    rerun: bool,
+}
+
+impl ClipSound {
+    fn changed(&mut self, layer: usize, commands: &mut Vec<SoundCommand>) {
+        *self = Self { start: true, rerun: false };
+        commands.push(SoundCommand::Changed { layer });
+    }
+
+    fn advance(&mut self, layer: usize, r: &AnimRef, from: f32, dt: f32, commands: &mut Vec<SoundCommand>) {
+        let Some(clip) = &r.clip else { return };
+        let mut first = std::mem::take(&mut self.start);
+        let mut from = from;
+        let mut to = from + dt * TICKS_PER_SECOND * r.speed;
+        let length = clip.length.max(1.0);
+        loop {
+            let end = to.min(if r.looping { length } else { clip.length });
+            for event in &clip.sound_events {
+                if ((event.time > from && event.time <= end) || (first && event.time == 0.0))
+                    && (!self.rerun || event.rerun)
+                {
+                    commands.push(SoundCommand::Cue { layer, cue: event.cue });
+                }
+            }
+            if !r.looping || to < length { break; }
+            to -= length;
+            from = 0.0;
+            first = true;
+            self.rerun = true;
+        }
+    }
 }
 
 /// The clips the gun's rules run on, from his pack.
@@ -256,6 +303,7 @@ impl Gun {
             // (`FUN_0074a180`). [game]
             let weight = if clips.arm[clip].crossfade > 0.0 { 0.0 } else { 1.0 };
             self.arm = Some(Arm { clip, tick: 0.0, weight, cut: false, out: None, elapsed: 0.0 });
+            self.arm_sound.changed(0, &mut self.sound_commands);
             self.arm_events(clips, clip, None, 0.0, 0);
         }
     }
@@ -268,6 +316,7 @@ impl Gun {
         }
         if id != 0 {
             self.object = Some(ObjectClip { id, tick: 0.0, finished: false });
+            self.object_sound.changed(1, &mut self.sound_commands);
             (self.then, self.hide_when_done) = (0, false);
         }
         if then != 0 {
@@ -408,6 +457,7 @@ impl Gun {
                 Some((r, clip)) => {
                     // The clip plays on while it fades, whatever ends it.
                     let before = arm.tick;
+                    self.arm_sound.advance(0, r, before, dt, &mut self.sound_commands);
                     arm.tick += dt * TICKS_PER_SECOND * r.speed;
                     let finished = !r.looping && arm.tick >= clip.length;
                     arm.tick = if r.looping { arm.tick % clip.length.max(1.0) } else { arm.tick.min(clip.length) };
@@ -431,8 +481,20 @@ impl Gun {
                 }
             };
             self.arm = keep.then_some(arm);
+            if !keep {
+                self.sound_commands.push(SoundCommand::Changed { layer: 0 });
+            }
         }
+        if let Some(object) = self.object {
+            if let Some(r) = clips.object.iter().find(|r| id_of(r) == object.id) {
+                self.object_sound.advance(1, r, object.tick, if object.finished { 0.0 } else { dt }, &mut self.sound_commands);
+            }
+        }
+        let before = self.object.map(|o| o.id);
         step_object(&mut self.object, &mut self.then, &mut self.hide_when_done, &mut self.shown, clips.object, dt);
+        if before != self.object.map(|o| o.id) {
+            self.object_sound.changed(1, &mut self.sound_commands);
+        }
     }
 }
 
@@ -446,6 +508,32 @@ mod tests {
     const CANNON: u32 = 1;
     const NODE: u32 = 77;
     const DT: f32 = 1.0 / 60.0;
+
+    #[test]
+    fn sound_cues_include_start_end_and_loop_tail_without_repeating_first_pass_only_keys() {
+        use crate::formats::anim::SoundEvent;
+        let cue = |time, id, rerun| SoundEvent { time, cue: SoundCue::Play { id, auto_stop: true }, rerun };
+        let mut r = AnimRef { speed: 1.0, looping: true,
+            clip: Some(Clip { length: 10.0, sound_events: vec![cue(0.0, 1, true), cue(2.0, 2, false), cue(9.0, 3, true)], ..Default::default() }),
+            ..Default::default() };
+        let mut tracker = ClipSound::default();
+        let mut commands = Vec::new();
+        tracker.changed(1, &mut commands);
+        tracker.advance(1, &r, 0.0, 8.0 / 60.0, &mut commands);
+        tracker.advance(1, &r, 8.0, 5.0 / 60.0, &mut commands);
+        let ids: Vec<_> = commands.iter().filter_map(|c| match c {
+            SoundCommand::Cue { cue: SoundCue::Play { id, .. }, .. } => Some(*id), _ => None,
+        }).collect();
+        assert_eq!(ids, [1, 2, 3, 1]);
+        commands.clear();
+        r.looping = false;
+        tracker.changed(1, &mut commands);
+        tracker.advance(1, &r, 0.0, 20.0 / 60.0, &mut commands);
+        assert_eq!(commands.len(), 4, "the whole final interval survives an overshot clip end");
+        commands.clear();
+        tracker.advance(1, &r, 10.0, 1.0 / 60.0, &mut commands);
+        assert!(commands.is_empty(), "a held end pose must stay silent");
+    }
 
     fn id(name: &str) -> u32 {
         crc32(name.as_bytes())
