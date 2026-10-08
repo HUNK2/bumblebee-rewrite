@@ -14,6 +14,14 @@ No original game media or packs are included or downloaded. The original game
 executable is not launched and its folder is not modified. Console editions
 cannot supply the PC data files.
 
+## Development and controller testing
+
+AI was used to assist with decompiling and analysing the original game's
+executable and rewriting its mechanics in Rust and Bevy.
+
+Mouse and keyboard input are supported, but this build was developed and tested
+with an XInput controller.
+
 ## Windows download
 
 Get the Windows x64 ZIP from this repository's Releases page. Extract it,
