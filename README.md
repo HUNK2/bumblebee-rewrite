@@ -83,3 +83,7 @@ and artifact directories. The build remaps source/profile paths; the package
 uses an explicit seven-file list and fixed archive timestamps. Repeat the
 source/history and executable/ZIP privacy audits before every publication.
 If dependencies change, regenerate and review their notices before packaging.
+
+## Contributors
+
+- [HUNK2](https://github.com/HUNK2) — project creator and maintainer.
