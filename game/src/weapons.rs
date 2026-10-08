@@ -652,6 +652,9 @@ impl Arsenal {
         self.tracers.retain(|tracer| tracer.age < TRACER_SECONDS);
         self.impacts.retain(|impact| impact.age < IMPACT_SECONDS);
         self.gun.step(clips, self.held[self.current].def.name, dt);
+        for command in self.gun.sound_commands.drain(..) {
+            if let Some(sound) = sound { sound.weapon_clip_command(command); }
+        }
         // The reticle. [assumed: the hit mark's clock starts as one of his shots takes a
         // target's health]
         // [game] a weapon's icon clock (its word 0xf6) runs while it is the manager's
