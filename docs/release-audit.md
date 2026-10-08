@@ -1,6 +1,6 @@
 # Release privacy and asset audit
 
-An account identifier was found in copied documentation and removed. Copied
+Before publication, an account identifier was found in copied documentation and removed. Copied
 private notes, provenance inventory and initial unpublished Git history were
 removed. Public documentation uses generic sample paths.
 
@@ -22,10 +22,14 @@ arena. Launcher checks passed for an explicit install, remembered install,
 invalid install rejection and environment restoration. Compiler output, local
 player settings, the test capture and logs are kept outside the source/package.
 
-Local Git history is recreated with generic author/committer identity and UTC
-timestamps. Publication exposes the hosting account and information already on
-its public profile; folder cleanup cannot hide that. This audit's conclusions
-cover the distributed source and Windows package, not the hosting profile.
+The original release was initially committed with generic identity. At the
+owner's request, the original release commit was reattributed to the owner's
+GitHub account, and the README and MIT license now explicitly credit that
+account. Git commits use the GitHub handle and ID-based noreply email with UTC
+timestamps. The owner has withdrawn the request for anonymous attribution.
+Public account credit is intentional; credentials and original game assets
+remain excluded. This audit's conclusions cover the distributed source and
+Windows package, not the hosting profile.
 
 The release executable was scanned as raw bytes and UTF-16 text for known private
 identity/location markers, user-profile paths and credential markers. Source

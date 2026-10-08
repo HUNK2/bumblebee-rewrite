@@ -1,5 +1,7 @@
 # Bumblebee rewrite - Windows download
 
+Created and maintained by [HUNK2](https://github.com/HUNK2).
+
 You need your own installed copy of **Transformers: Revenge of the Fallen
 (PC)**. Keep its full data folder available. No original game assets are
 included or downloaded. The rewrite reads that folder; it does not launch the

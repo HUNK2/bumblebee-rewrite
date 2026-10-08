@@ -1,5 +1,7 @@
 # Bumblebee rewrite v0.1.0
 
+Created and maintained by [HUNK2](https://github.com/HUNK2).
+
 First public Windows x64 release of the Rust/Bevy rewrite in an authored arena.
 Requires the player's own full PC installation of Transformers: Revenge of
 the Fallen. No original game assets or extracted media are included or downloaded.

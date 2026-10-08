@@ -1,8 +1,9 @@
 # Shipping status
 
 Gameplay scope is accepted. Private development notes and copied provenance
-inventory were removed. Local history is rebuilt from sanitized source with
-generic Git identity and UTC timestamps before publication.
+inventory were removed. The owner now requests explicit GitHub credit rather
+than anonymous attribution. The original release commit is attributed to the
+owner's GitHub account; README and MIT license credit the same account.
 
 Startup requires TF2_GAME_DIR. The launcher requires the player's own original
 PC game directory and checks its main packs. Runtime reads additional assets
@@ -19,7 +20,8 @@ developer tests assume fixed paths or need external recordings.
 Windows v0.1.0 package uses MIT for the rewrite with complete dependency/font
 notices. Its seven-file ZIP contains no original game content, caches, captures,
 logs or symbols. Source and executable/ZIP privacy audits pass for known private
-markers and profile paths. Publication uses generic Git identity and UTC dates.
+markers and profile paths. Public account credit is now intentional. Git uses
+the owner's GitHub handle and noreply email with UTC dates.
 
 Known limit: Windows/GPU/install compatibility beyond the development PC has
 not been established. Generated local caches must not be redistributed.

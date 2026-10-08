@@ -1,5 +1,7 @@
 # Bumblebee rewrite
 
+Created and maintained by [HUNK2](https://github.com/HUNK2).
+
 Bumblebee's robot and vehicle mechanics from **Transformers: Revenge of the
 Fallen (PC)**, reimplemented in Rust and Bevy with an authored arena and scouts.
 This does not include the original campaign or levels.
