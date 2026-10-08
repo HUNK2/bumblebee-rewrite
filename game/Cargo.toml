@@ -1,0 +1,13 @@
+[package]
+name = "bumblebee"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+description = "Bumblebee from Transformers: Revenge of the Fallen, rebuilt in Bevy. Reads the game install at runtime; ships no game files."
+
+[dependencies]
+bevy = "0.19"
+tf2-core = { path = "../core" }
+# The same version Bevy's own audio already brings in; the mixer in tf2-core feeds it directly.
+cpal = "0.17"

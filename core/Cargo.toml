@@ -1,0 +1,15 @@
+[package]
+name = "tf2-core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+description = "Engine-free readers and movement rules for the decoded Transformers data. Reads the game install at runtime; ships no game files."
+
+[dependencies]
+flate2 = "1.1"
+# Must stay the version Bevy 0.19 uses, so the Bevy test sees the same vector types.
+glam = "0.32"
+symphonia = { version = "0.5", default-features = false, features = ["mp3"] }
+# Decode/resample the user's textures locally; the renderer already uses this version.
+image = { version = "=0.25.9", default-features = false, features = ["dds", "png"] }
