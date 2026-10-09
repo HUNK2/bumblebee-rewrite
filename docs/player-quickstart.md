@@ -7,20 +7,65 @@ You need your own installed copy of **Transformers: Revenge of the Fallen
 included or downloaded. The rewrite reads that folder; it does not launch the
 original executable or change the install. Console editions are not supported.
 
-## Start playing
+## Install and start
 
-1. Extract the entire ZIP into a folder you can write to.
-2. Install the [Microsoft Visual C++ v14 x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe)
-   if it is not already installed. This is required by the Windows executable.
-3. Double-click `Start-Bumblebee.cmd`.
-4. On first launch, enter the original PC game install folder containing
-   `bnxglobal.str` and `characters`. Wait for assets and shaders to load.
+These steps are for the ready-to-play Windows download. You do not need Rust,
+Python, Ghidra, or administrator privileges to play. The Redistributable setup
+may ask for administrator permission.
 
-Rust, Python, Ghidra and administrator privileges are not required to run the
-rewrite. The Redistributable installer may ask for administrator permission.
+### 1. Find your PC game folder
+
+You need your own installed copy of **Transformers: Revenge of the Fallen for
+Windows PC**. Console versions do not work, and the game must remain installed.
+
+Open File Explorer, click **This PC** in the left sidebar, then search for
+`bnxglobal.str`. When it appears, right-click the result and choose **Open file
+location**. The folder that opens must contain `bnxglobal.str` and a
+`characters` folder. Open `characters` and make sure it contains
+`bumblebee.str`. Remember this folder; you will enter its path the first time
+you start Bumblebee.
+
+### 2. Extract the download
+
+If you downloaded the ZIP from GitHub, right-click it and choose **Extract
+All**, then choose a folder you can find again, such as `Documents\Bumblebee`.
+Open the extracted folder. You should see `Start-Bumblebee.cmd`,
+`Start-Bumblebee.ps1`, and `bumblebee.exe` together. Do not run the files from
+inside the ZIP and do not put them in the original game's folder.
+
+### 3. Install the Windows support component
+
+Download and run Microsoft's [Visual C++ v14 x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe).
+Choose **Install** or **Repair** if setup offers it. This small Microsoft
+component is required by the Bumblebee executable.
+
+### 4. Start Bumblebee
+
+Double-click `Start-Bumblebee.cmd`. On the first start, a black window asks for
+the PC game install folder. Paste the folder path from step 1 and press Enter.
+Do not enter the path to the game's `.exe` file. The launcher saves the folder
+on this computer, so it should not ask again next time. Wait while the game
+loads; the first start can take a little while.
+
+The download is not code-signed. Windows may show an unknown-publisher or
+reputation warning. Only use a copy downloaded from the official GitHub
+Releases page; cancel the warning if you are not comfortable running an
+unsigned program. The rewrite reads files from your game folder, but does not
+start the original game or change its files.
+
 This download targets Windows 10/11 x64 and a GPU capable of running Bevy's
 renderer. It has been checked on one development PC; a minimum GPU and broad
 install/version compatibility have not yet been established.
+
+### If it does not start
+
+- **A required game file is missing:** select the folder that directly
+  contains `bnxglobal.str` and the `characters` folder with `bumblebee.str`.
+- **`VCRUNTIME140.dll` is missing:** install the Redistributable in step 3.
+- **`bumblebee.exe` is missing:** extract the ZIP again and keep the three
+  launcher files together.
+- **Still stuck:** leave the black window open and include its error text when
+  asking for help.
 
 Click the game window to capture the mouse, then release that click before
 playing. Esc or switching away releases it. F1 toggles help.
