@@ -19,8 +19,8 @@ if (Test-Path -LiteralPath $packageOutput) {
     if ((Get-Item -LiteralPath $packageOutput).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Output directory must not be a link.' }
 }
 $packageExecutable = Join-Path ([IO.Path]::GetFullPath($BuildDirectory)) 'release\bumblebee.exe'
-$packageStage = Join-Path $packageOutput 'bumblebee-rewrite-v0.1.0-windows-x64'
-$packageArchive = Join-Path $packageOutput 'bumblebee-rewrite-v0.1.0-windows-x64.zip'
+$packageStage = Join-Path $packageOutput 'bumblebee-rewrite-v0.1.1-windows-x64'
+$packageArchive = Join-Path $packageOutput 'bumblebee-rewrite-v0.1.1-windows-x64.zip'
 $packageFiles = [ordered]@{
     'bumblebee.exe' = $packageExecutable
     'Start-Bumblebee.ps1' = Join-Path $PSScriptRoot 'Start-Bumblebee.ps1'

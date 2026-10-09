@@ -54,7 +54,7 @@ Provenance tags and fidelity limitations remain in source. Authored arena/scout
 tactics include substitutes; original campaign content is not included. Some
 developer tests assume fixed paths or need external recordings.
 
-Windows v0.1.0 package uses MIT for the rewrite with complete dependency/font
+Windows v0.1.1 package uses MIT for the rewrite with complete dependency/font
 notices. Its seven-file ZIP contains no original game content, caches, captures,
 logs or symbols. Source and executable/ZIP privacy audits pass for known private
 markers and profile paths. Public account credit is now intentional. Git uses

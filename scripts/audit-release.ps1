@@ -17,8 +17,18 @@ $auditPatterns = @(
 ) + $PrivatePatterns
 $auditUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
 $auditFailures = New-Object 'System.Collections.Generic.List[string]'
-$auditFiles = @(Get-ChildItem -LiteralPath $auditRoot -Recurse -File -Force |
-    Where-Object { -not $_.FullName.StartsWith((Join-Path $auditRoot '.git') + '\', [StringComparison]::OrdinalIgnoreCase) })
+$auditGitPaths = @(& git -C $auditRoot ls-files --cached --others --exclude-standard)
+if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate Git-visible release source files.' }
+$auditFiles = foreach ($auditRelative in $auditGitPaths) {
+    if (-not $auditRelative) { continue }
+    $auditCandidate = Join-Path $auditRoot $auditRelative
+    if (-not (Test-Path -LiteralPath $auditCandidate -PathType Leaf)) { continue }
+    $auditResolved = (Resolve-Path -LiteralPath $auditCandidate).Path
+    if (-not $auditResolved.StartsWith($auditRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Release source path escapes the repository: $auditRelative"
+    }
+    Get-Item -LiteralPath $auditResolved -Force
+}
 foreach ($auditFile in $auditFiles) {
     $auditRelative = $auditFile.FullName.Substring($auditRoot.Length + 1)
     if ($auditFile.Extension -notin $auditAllowed -and $auditRelative -notin $auditSpecial) {
@@ -48,5 +58,6 @@ if ($auditFailures.Count) {
     $auditFailures | ForEach-Object { Write-Output $_ }
     throw "Release source audit failed: $($auditFailures.Count) finding(s)."
 }
-Write-Output "PASS: $($auditFiles.Count) source-tree files; no prohibited file types, binary payloads, user-profile paths, contact addresses or credential markers found."
+Write-Output "PASS: $($auditFiles.Count) Git-visible source files; no prohibited file types, binary payloads, user-profile paths, contact addresses or credential markers found."
+Write-Output 'Ignored build outputs, local caches and ignored preview assets are excluded from the source audit.'
 Write-Output 'Numeric fixtures contain simulation observations only. Git metadata/history and future binaries require separate review.'

@@ -6,8 +6,6 @@ Bumblebee's robot and vehicle mechanics from **Transformers: Revenge of the
 Fallen (PC)**, reimplemented in Rust and Bevy with an authored arena and scouts.
 This does not include the original campaign or levels.
 
-![Bumblebee in the rewrite arena](docs/images/bumblebee-preview.png)
-
 **You must supply your own installed copy of the original PC game.** Models,
 textures, animation, audio, UI and tuning are read from that install at runtime.
 No original game media or packs are included or downloaded. The original game

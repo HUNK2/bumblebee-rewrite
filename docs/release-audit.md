@@ -4,10 +4,12 @@ Before publication, an account identifier was found in copied documentation and 
 private notes, provenance inventory and initial unpublished Git history were
 removed. Public documentation uses generic sample paths.
 
-The source audit checks files outside .git for privately supplied identifying
-strings, user-profile paths, email addresses, credential/private-key markers,
-unreviewed extensions, binary payloads and invalid text encoding. The three test
-CSV files are checked for numeric-only simulation observations.
+The source audit checks Git-tracked and non-ignored files for privately supplied
+identifying strings, user-profile paths, email addresses, credential/private-key
+markers, unreviewed extensions, binary payloads and invalid text encoding.
+Ignored build output, caches and local preview assets are excluded because they
+are not part of source downloads or the explicitly packaged player ZIP. The three
+test CSV files are checked for numeric-only simulation observations.
 
 The tree contains source, authored shaders, manifests/lockfile, documentation,
 scripts and numeric fixtures. No original game packs, images, meshes, animation
@@ -57,3 +59,20 @@ opinion. Review the exact Git tree/history and every executable/ZIP before
 publication. Compilers can embed paths and debug information. Never
 include game assets, local caches, logs, symbols or .git in a player ZIP.
 Package only files on a reviewed explicit list.
+
+## v0.1.1 candidate validation
+
+The release workspace tests passed: 348 `tf2-core` tests and 23 `bumblebee` tests.
+The locked offline optimized Windows x64 build passed. The packaged executable's
+headless `--check bumblebee` mode loaded the character pack from the user's
+`C:\Games2` install. The source audit passed for 129 Git-visible files, and the
+executable/ZIP audit passed. The seven-file Windows ZIP contains no game assets.
+
+Executable SHA-256:
+`5f015156c1bb74a89f183ad6deb43df2e798e62aafcbe19cf32ea698ec84607b`
+
+ZIP SHA-256:
+`8ea77c66018d844cb0128548697b5211205055f41de5980481dda51ba11e516a`
+
+The preview screenshot is excluded from the v0.1.1 source tree; the existing
+v0.1.0 tag and its Git history were not rewritten.
